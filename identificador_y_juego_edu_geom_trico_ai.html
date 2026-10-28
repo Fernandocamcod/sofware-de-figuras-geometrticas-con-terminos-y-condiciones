@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; connect-src 'self' https:; media-src 'self' blob: data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+    <meta http-equiv="Permissions-Policy" content="camera=(self), microphone=(), geolocation=(), interest-cohort=()">
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <title>GeoAI Lab - Detección y Aprendizaje Geométrico</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            pink: '#FF80AB',
+                            pinkHover: '#F48FB1',
+                            pinkLight: '#FCE4EC',
+                            blue: '#29B6F6',
+                            blueDark: '#0288D1',
+                            blueLight: '#E0F7FA',
+                            bg: '#FAFAFA'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- TensorFlow.js, MobileNet y KNN Classifier -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/knn-classifier@1.2.2/dist/knn-classifier.min.js"></script>
+    
+    <!-- Three.js para renderizado 3D -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FAFAFA;
+        }
+        
+        .pulse-pink {
+            animation: pulse-pink-anim 2s infinite;
+        }
+        
+        @keyframes pulse-pink-anim {
+            0% { box-shadow: 0 0 0 0 rgba(255, 128, 171, 0.6); }
+            70% { box-shadow: 0 0 0 12px rgba(255, 128, 171, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 128, 171, 0); }
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #29B6F6;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #0288D1;
+        }
+        
+        canvas {
+            touch-action: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col justify-between selection:bg-brand-pinkLight selection:text-brand-blueDark">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-pink to-brand-blue flex items-center justify-center text-white font-bold text-xl shadow-md">
+                    <i class="fa-solid font-shapes text-lg">Δ</i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold bg-gradient-to-r from-brand-blueDark to-brand-pink bg-clip-text text-transparent">GeoAI Lab</h1>
+                    <p class="text-xs text-slate-500 font-medium hidden sm:block">Reconocimiento & Aprendizaje Geométrico IA</p>
+                </div>
+            </div>
+
+            <!-- Menú de Estado de Permisos de Cámara & Controles Rápidos -->
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                <div id="cameraStatusBadge" class="flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></span>
+                    <span id="cameraStatusText">Cámara Apagada</span>
+                </div>
+
+                <button id="toggleCamBtn" onclick="appState.toggleCamera()" class="px-4 py-2 bg-brand-blue text-white rounded-xl text-xs font-bold shadow-md hover:bg-brand-blueDark transition flex items-center space-x-2">
+                    <i class="fa-solid fa-video"></i>
+                    <span id="toggleCamText">Encender Cámara</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Modal de consentimiento inicial de cookies y condiciones -->
+    <div id="cookieTermsModal" class="hidden fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="w-full max-w-xl bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden">
+            <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-pink to-brand-blue flex items-center justify-center text-white font-bold">
+                        <i class="fa-solid fa-cookie-bite"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold">Aviso de consentimientos y protección de datos</h3>
+                        <p class="text-[11px] text-slate-300">Antes de acceder a la cámara debes aceptar los términos y condiciones.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="p-5 sm:p-6 text-sm text-slate-700">
+                <p class="mb-4">Este sistema utiliza la cámara para capturar gestos y reconocer figuras geométricas en tiempo real. El tratamiento de datos de imagen y movimiento debe realizarse bajo <strong>consentimiento informado</strong>, <strong>minimización de datos</strong>, <strong>protección desde el diseño</strong> y <strong>limitación de accesos</strong>. En este proyecto, los datos se procesan <strong>localmente en tu dispositivo</strong>, no se usan para identificación personal ni para control de acceso real y no se almacenan en servidores externos.</p>
+                <div class="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs leading-relaxed">
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input id="cookieTermsCheckbox" type="checkbox" class="mt-1 h-4 w-4 rounded border-slate-300 text-brand-blue focus:ring-brand-blue">
+                        <span>He leído y acepto el <strong>Aviso Legal</strong>, la <strong>Política de Privacidad</strong>, los <strong>Términos y Condiciones</strong>, el uso de cookies para recordar mi consentimiento y la protección de datos aplicada en esta aplicación educativa.</span>
+                    </label>
+                </div>
+            </div>
+            <div class="bg-slate-50 border-t border-slate-200 px-5 py-4 flex flex-col sm:flex-row justify-end gap-2">
+                <button onclick="appState.denyConsentCookie()" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl transition">
+                    Rechazar y continuar sin cámara
+                </button>
+                <button id="acceptTermsBtn" onclick="appState.acceptTermsAndStart()" class="px-5 py-2.5 bg-brand-pink hover:bg-brand-pinkHover text-white text-xs font-bold rounded-xl shadow transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    <i class="fa-solid fa-check mr-1"></i> Aceptar y continuar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Banner Explícito de Consentimiento de Cámara (Cookie & LocalStorage) -->
+    <div id="cookiePermissionBanner" class="hidden bg-slate-900 text-white p-4 sm:p-5 sticky top-16 z-40 shadow-xl border-b-2 border-brand-pink">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div class="flex items-start space-x-3">
+                <div class="p-2 bg-brand-pink/20 text-brand-pink rounded-xl mt-1 md:mt-0">
+                    <i class="fa-solid fa-camera-rotate text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-sm sm:text-base flex items-center gap-2">
+                        Permiso de Cámara y Preferencias del Sitio 
+                        <span class="text-xs bg-brand-blue/30 text-brand-blueLight px-2 py-0.5 rounded-md">Cookies & Storage</span>
+                    </h3>
+                    <p class="text-xs sm:text-sm text-slate-300 mt-0.5">
+                        Para entrenar y detectar figuras geométricas 2D y 3D en tiempo real, la IA necesita acceso a tu cámara. Guardaremos tu preferencia en una cookie para no solicitártelo constantemente.
+                    </p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 w-full md:w-auto justify-end">
+                <button onclick="appState.denyConsentCookie()" class="px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition">
+                    Solo Usar Modelos 3D
+                </button>
+                <button onclick="appState.acceptConsentCookieAndStart()" class="px-4 py-2 text-xs font-bold bg-brand-pink hover:bg-brand-pinkHover text-white rounded-lg shadow-lg pulse-pink transition flex items-center gap-2 whitespace-nowrap">
+                    <i class="fa-solid fa-lock-open"></i> Permitir Cámara & Recordar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contenido Principal -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-grow w-full">
+        <!-- Pestañas de Navegación Principal -->
+        <div class="flex border-b border-slate-200 mb-6 bg-white p-1 rounded-2xl shadow-sm justify-center sm:justify-start gap-1">
+            <button id="tabTrainBtn" onclick="appState.switchTab('train')" class="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-brand-blueLight text-brand-blueDark">
+                <i class="fa-solid fa-brain"></i> Detector e IA
+            </button>
+            <button id="tab3dBtn" onclick="appState.switchTab('geometry')" class="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 text-slate-500 hover:text-brand-blueDark">
+                <i class="fa-solid fa-cube"></i> Explorador 3D
+            </button>
+            <button id="tabQuizBtn" onclick="appState.switchTab('quiz')" class="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 text-slate-500 hover:text-brand-pink">
+                <i class="fa-solid fa-gamepad"></i> Modo Desafío / Quiz
+            </button>
+        </div>
+
+        <!-- SECCIÓN 1: DETECTOR Y ENTRENADOR IA -->
+        <div id="sectionTrain" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <!-- Feed de Cámara y Predicciones -->
+            <div class="lg:col-span-7 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-camera text-brand-blue"></i> Visor de Cámara IA
+                        </h2>
+                        <!-- Botón Conmutador Frontal/Trasera para Móvil -->
+                        <div class="flex items-center space-x-2">
+                            <button id="switchCamFacingBtn" onclick="appState.switchCameraFacing()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition flex items-center gap-1.5" title="Cambiar Cámara Trasera/Frontal">
+                                <i class="fa-solid fa-rotate"></i>
+                                <span class="hidden sm:inline">Cambiar Cámara</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Canvas/Video Wrapper -->
+                    <div class="relative bg-slate-900 rounded-2xl overflow-hidden aspect-video flex items-center justify-center border-2 border-slate-100 shadow-inner group">
+                        <video id="webcam" autoplay playsinline muted class="w-full h-full object-cover hidden"></video>
+                        <canvas id="webcamCanvas" class="w-full h-full object-cover hidden"></canvas>
+
+                        <!-- Overlay Placeholder cuando la cámara está apaga -->
+                        <div id="camOffOverlay" class="flex flex-col items-center justify-center p-6 text-center text-slate-400">
+                            <div class="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mb-3 text-slate-500 text-2xl">
+                                <i class="fa-solid fa-video-slash"></i>
+                            </div>
+                            <p class="font-semibold text-sm text-slate-300">Cámara Desactivada</p>
+                            <p class="text-xs mt-1 max-w-xs text-slate-400">Presiona "Encender Cámara" para comenzar la detección o entrenamiento de figuras.</p>
+                            <button onclick="appState.requestCameraPermissionDirectly()" class="mt-4 px-4 py-2 bg-brand-pink hover:bg-brand-pinkHover text-white text-xs font-bold rounded-xl shadow-md transition">
+                                Activar Cámara Ahora
+                            </button>
+                        </div>
+
+                        <!-- Badge de Diagnóstico de Error Permiso -->
+                        <div id="camErrorOverlay" class="hidden absolute inset-0 bg-slate-900/95 p-6 flex flex-col items-center justify-center text-center z-10">
+                            <div class="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center text-xl mb-2">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                            </div>
+                            <h4 class="font-bold text-white text-base">Acceso Bloqueado</h4>
+                            <p class="text-xs text-slate-300 mt-1 max-w-md">No se pudo acceder a la cámara. Revisa las instrucciones de desbloqueo en la configuración de tu navegador.</p>
+                            <button onclick="appState.showPermissionInstructionsModal()" class="mt-3 px-4 py-2 bg-brand-blue text-white text-xs font-bold rounded-xl shadow transition flex items-center gap-2">
+                                <i class="fa-solid fa-circle-question"></i> Ver cómo desbloquear
+                            </button>
+                        </div>
+
+                        <!-- Barita de Predicción Sobrepuesta -->
+                        <div id="predictionBadge" class="hidden absolute top-3 left-3 right-3 bg-slate-900/80 backdrop-blur-md p-3 rounded-xl border border-white/10 text-white flex items-center justify-between shadow-lg">
+                            <div>
+                                <span class="text-[10px] uppercase font-bold text-brand-blueLight tracking-wider">Figura Detectada</span>
+                                <div id="predictedLabel" class="text-lg font-extrabold text-brand-pink">Analizando...</div>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-[10px] uppercase font-bold text-slate-400">Confianza</span>
+                                <div id="predictedConfidence" class="text-sm font-bold text-emerald-400">0%</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Estado del Modelo IA -->
+                <div class="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between text-xs">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-microchip text-brand-blue"></i>
+                        <span class="font-medium text-slate-600">Estado del Modelo:</span>
+                        <span id="modelStatus" class="font-bold text-amber-600">Cargando MobileNet...</span>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="appState.saveKnnModel()" class="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg font-semibold shadow-sm transition" title="Guardar entrenamiento localmente">
+                            <i class="fa-solid fa-floppy-disk text-brand-blue"></i> Guardar
+                        </button>
+                        <button onclick="appState.clearKnnModel()" class="px-2.5 py-1 bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 rounded-lg font-semibold shadow-sm transition" title="Borrar muestras">
+                            <i class="fa-solid fa-trash"></i> Reiniciar
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel de Entrenamiento por Figuras -->
+            <div class="lg:col-span-5 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-graduation-cap text-brand-pink"></i> Panel de Entrenamiento
+                        </h2>
+                        <span class="text-xs bg-brand-pinkLight text-brand-pink font-bold px-2.5 py-1 rounded-full">
+                            Muestras: <span id="totalSamplesCount">0</span>
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-500 mb-4">
+                        Muestra la figura geométrica frente a la cámara y mantén presionado el botón correspondiente para añadir ejemplos al clasificador KNN.
+                    </p>
+
+                    <!-- Cuadrícula de Figuras a Entrenar -->
+                    <div class="grid grid-cols-2 gap-2.5 max-h-[380px] overflow-y-auto pr-1 custom-scrollbar" id="shapeTrainGrid">
+                        <!-- Generado Dinámicamente por JS -->
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-100 text-center">
+                    <p class="text-[11px] text-slate-400">
+                        <i class="fa-solid fa-circle-info mr-1"></i> Se recomienda al menos 15-20 muestras por figura para mayor precisión.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 2: VISOR Y PROPIEDADES GEOMÉTRICAS 3D -->
+        <div id="sectionGeometry" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <!-- Canvas Three.js Interactivos -->
+            <div class="lg:col-span-7 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-slate-200 flex flex-col">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-cubes text-brand-blue"></i> Laboratorio 3D Interactivo
+                    </h2>
+                    <span class="text-xs text-slate-400">Arrastra para rotar | Scrollea para zoom</span>
+                </div>
+
+                <div id="threeContainer" class="w-full h-80 sm:h-96 bg-slate-900 rounded-2xl overflow-hidden relative border border-slate-800 shadow-inner">
+                    <!-- Three.js Canvas insertado aquí -->
+                    <div id="shapeTitle3D" class="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 text-white font-bold text-sm">
+                        Cubo 3D
+                    </div>
+                </div>
+
+                <!-- Selector Manual de Figuras -->
+                <div class="mt-4">
+                    <label class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Seleccionar Figura Geometrica:</label>
+                    <div class="flex flex-wrap gap-2" id="shapeSelectorBtns">
+                        <!-- Generado por JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ficha Geométrico / Propiedades Matemáticas -->
+            <div class="lg:col-span-5 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-between">
+                <div>
+                    <div class="border-b border-slate-100 pb-3 mb-3">
+                        <span id="shapeCategoryBadge" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-brand-blueLight text-brand-blueDark">Geometría 3D</span>
+                        <h3 id="infoShapeName" class="text-2xl font-black text-slate-800 mt-1">Cubo</h3>
+                        <p id="infoShapeDesc" class="text-xs text-slate-500 mt-1">Un poliedro regular limitado por seis caras cuadradas congruentes.</p>
+                    </div>
+
+                    <!-- Fórmulas y Métricas -->
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-3 gap-2 text-center">
+                            <div class="bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
+                                <span class="text-[10px] text-slate-400 uppercase font-bold block">Caras</span>
+                                <span id="infoFaces" class="text-base font-extrabold text-brand-blueDark">6</span>
+                            </div>
+                            <div class="bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
+                                <span class="text-[10px] text-slate-400 uppercase font-bold block">Vértices</span>
+                                <span id="infoVertices" class="text-base font-extrabold text-brand-pink">8</span>
+                            </div>
+                            <div class="bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
+                                <span class="text-[10px] text-slate-400 uppercase font-bold block">Aristas</span>
+                                <span id="infoEdges" class="text-base font-extrabold text-indigo-600">12</span>
+                            </div>
+                        </div>
+
+                        <!-- Fórmulas -->
+                        <div class="bg-brand-blueLight/40 p-3.5 rounded-2xl border border-brand-blueLight">
+                            <h4 class="text-xs font-bold text-brand-blueDark uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <i class="fa-solid fa-calculator"></i> Fórmulas Matemáticas
+                            </h4>
+                            <div class="space-y-1.5 text-xs text-slate-700">
+                                <div class="flex justify-between">
+                                    <span class="font-medium text-slate-500">Área Superficial:</span>
+                                    <span id="formulaArea" class="font-mono font-bold">A = 6a²</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="font-medium text-slate-500">Volumen:</span>
+                                    <span id="formulaVolume" class="font-mono font-bold">V = a³</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Datos Curiosos / Propiedades -->
+                        <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                            <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                                <i class="fa-solid fa-lightbulb text-amber-500"></i> Propiedad Clave
+                            </h4>
+                            <p id="infoTrivia" class="text-xs text-slate-600 leading-relaxed">
+                                Todas sus caras son cuadrados iguales y sus ángulos internos son rectos (90°).
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 3: MODO QUIZ / DESAFÍO INTERACTIVO -->
+        <div id="sectionQuiz" class="hidden max-w-3xl mx-auto bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-200">
+            <div class="text-center mb-6">
+                <span class="px-3 py-1 bg-brand-pinkLight text-brand-pink font-bold text-xs rounded-full uppercase tracking-wider">Desafío Educativo</span>
+                <h2 class="text-2xl font-black text-slate-800 mt-2">¿Cuánto sabes de Geometría?</h2>
+                <p class="text-xs text-slate-500 mt-1">Responde a las preguntas y pon a prueba tus conocimientos geométricos.</p>
+            </div>
+
+            <!-- Quiz Container -->
+            <div id="quizCard" class="bg-slate-50 p-5 sm:p-6 rounded-2xl border border-slate-200 relative">
+                <div class="flex justify-between items-center mb-4">
+                    <span id="quizQuestionNum" class="text-xs font-bold text-brand-blueDark">Pregunta 1 de 5</span>
+                    <span id="quizScoreBadge" class="text-xs font-extrabold bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg">Puntos: 0</span>
+                </div>
+
+                <h3 id="quizQuestionText" class="text-base sm:text-lg font-bold text-slate-800 mb-5">
+                    ¿Cuál de las siguientes figuras 3D tiene exactamente 6 caras cuadradas?
+                </h3>
+
+                <div id="quizOptions" class="space-y-2.5">
+                    <!-- Generado por JS -->
+                </div>
+
+                <div id="quizFeedback" class="hidden mt-4 p-3 rounded-xl text-xs font-bold text-center"></div>
+            </div>
+
+            <div class="flex justify-between items-center mt-6">
+                <button onclick="appState.resetQuiz()" class="text-xs font-semibold text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-rotate-right mr-1"></i> Reiniciar Quiz
+                </button>
+                <button id="nextQuizBtn" onclick="appState.nextQuizQuestion()" class="hidden px-5 py-2.5 bg-brand-blue hover:bg-brand-blueDark text-white text-xs font-bold rounded-xl shadow transition">
+                    Siguiente Pregunta <i class="fa-solid fa-arrow-right ml-1"></i>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- MODAL DE INSTRUCCIONES PARA DESBLOQUEO DE CÁMARA (Navegadores & Móviles) -->
+    <div id="cameraInstructionsModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <!-- Header Modal -->
+            <div class="bg-gradient-to-r from-brand-blueDark to-brand-blue p-5 text-white flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="p-2 bg-white/20 rounded-xl">
+                        <i class="fa-solid fa-video-slash text-xl"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-base sm:text-lg">Cómo Desbloquear la Cámara</h3>
+                        <p class="text-xs text-brand-blueLight">Guía paso a paso para resolver permisos en tu dispositivo</p>
+                    </div>
+                </div>
+                <button onclick="appState.closePermissionInstructionsModal()" class="text-white/80 hover:text-white text-xl p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Body modal scrollable -->
+            <div class="p-5 overflow-y-auto space-y-6 custom-scrollbar text-slate-700 text-xs sm:text-sm">
+                <!-- Selector de Plataforma -->
+                <div class="flex border-b border-slate-200 gap-2 pb-2">
+                    <button id="guideBtnChrome" onclick="appState.showGuideTab('chrome')" class="px-3 py-1.5 rounded-lg font-bold text-xs bg-brand-blueLight text-brand-blueDark">
+                        <i class="fa-brands fa-chrome mr-1"></i> Chrome / Edge
+                    </button>
+                    <button id="guideBtnFirefox" onclick="appState.showGuideTab('firefox')" class="px-3 py-1.5 rounded-lg font-bold text-xs text-slate-500 hover:bg-slate-100">
+                        <i class="fa-brands fa-firefox-browser mr-1"></i> Firefox
+                    </button>
+                    <button id="guideBtnSafari" onclick="appState.showGuideTab('safari')" class="px-3 py-1.5 rounded-lg font-bold text-xs text-slate-500 hover:bg-slate-100">
+                        <i class="fa-brands fa-safari mr-1"></i> Safari / iOS
+                    </button>
+                    <button id="guideBtnAndroid" onclick="appState.showGuideTab('android')" class="px-3 py-1.5 rounded-lg font-bold text-xs text-slate-500 hover:bg-slate-100">
+                        <i class="fa-brands fa-android mr-1"></i> Android
+                    </button>
+                </div>
+
+                <!-- Guía Chrome/Edge -->
+                <div id="guideContentChrome" class="space-y-3">
+                    <ol class="list-decimal list-inside space-y-2 leading-relaxed">
+                        <li>Observa la <strong>Barra de Direcciones</strong> en la parte superior izquierda del navegador (donde aparece la URL).</li>
+                        <li>Haz clic en el icono de <strong>Candado / Ajustes del Sitio</strong> (<i class="fa-solid fa-lock text-slate-400"></i> o <i class="fa-solid fa-sliders text-slate-400"></i>).</li>
+                        <li>Busca la opción de <strong>Cámara</strong>.</li>
+                        <li>Cambia el interruptor de "Bloquear" o "Preguntar" a <strong class="text-emerald-600">Permitir</strong>.</li>
+                        <li>Recarga la página presionado <kbd class="bg-slate-200 px-1.5 py-0.5 rounded text-xs font-mono">F5</kbd> o el botón de refrescar.</li>
+                    </ol>
+                </div>
+
+                <!-- Guía Firefox -->
+                <div id="guideContentFirefox" class="hidden space-y-3">
+                    <ol class="list-decimal list-inside space-y-2 leading-relaxed">
+                        <li>Haz clic en el icono de <strong>Permisos/Candado</strong> a la izquierda de la dirección web.</li>
+                        <li>Si ves la cámara bloqueada con una cruz, haz clic en la <strong>X junto a "Bloqueado Temporalmente"</strong> para eliminar el bloqueo.</li>
+                        <li>Recarga la página y vuelve a presionar <strong>"Encender Cámara"</strong>.</li>
+                        <li>Selecciona <strong>"Permitir"</strong> cuando el navegador te solicite acceso.</li>
+                    </ol>
+                </div>
+
+                <!-- Guía Safari iOS -->
+                <div id="guideContentSafari" class="hidden space-y-3">
+                    <ol class="list-decimal list-inside space-y-2 leading-relaxed">
+                        <li>Toca el botón <strong>"aA"</strong> o el icono de ajustes en el lado izquierdo de la barra de direcciones en Safari.</li>
+                        <li>Selecciona <strong>"Configuración del sitio web"</strong>.</li>
+                        <li>Toca en <strong>Cámara</strong> y cámbialo a <strong class="text-emerald-600">Permitir</strong>.</li>
+                        <li>Regresa a la página y recárgala.</li>
+                    </ol>
+                </div>
+
+                <!-- Guía Android Chrome -->
+                <div id="guideContentAndroid" class="hidden space-y-3">
+                    <ol class="list-decimal list-inside space-y-2 leading-relaxed">
+                        <li>Toca el icono de <strong>tres puntos (⋮)</strong> arriba a la derecha en Chrome.</li>
+                        <li>Ve a <strong>Configuración</strong> > <strong>Configuración de sitios</strong> > <strong>Cámara</strong>.</li>
+                        <li>Asegúrate de que la cámara esté activada y busca este sitio en la lista de "Bloqueados" para darle permiso.</li>
+                        <li>Abre los Ajustes Generales de tu teléfono Android > <strong>Aplicaciones</strong> > Chrome > <strong>Permisos</strong> > Asegúrate que Cámara esté activada.</li>
+                    </ol>
+                </div>
+
+                <!-- Banner Cookie Nota -->
+                <div class="bg-amber-50 border border-amber-200 p-3.5 rounded-2xl flex items-start space-x-2.5">
+                    <i class="fa-solid fa-cookie-bite text-amber-600 text-lg mt-0.5"></i>
+                    <div class="text-xs text-amber-900">
+                        <strong>Nota sobre Cookies:</strong> Hemos guardado tu preferencia de consentimiento en tu navegador local (Cookie: `camera_consent=granted`). Si borras las cookies de tu navegador, deberás aceptar nuevamente el banner inicial.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer Modal -->
+            <div class="bg-slate-50 p-4 border-t border-slate-200 flex justify-end">
+                <button onclick="appState.retryCameraAccess()" class="px-5 py-2 bg-brand-blue hover:bg-brand-blueDark text-white text-xs font-bold rounded-xl shadow transition flex items-center gap-2">
+                    <i class="fa-solid fa-rotate-right"></i> Reintentar Acceso
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Aviso Legal y Privacidad -->
+    <div id="legalNoticeModal" class="hidden fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="w-full max-w-2xl bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden">
+            <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-pink to-brand-blue flex items-center justify-center text-white font-bold">
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold">Aviso Legal, Privacidad y Seguridad</h3>
+                        <p class="text-[11px] text-slate-300">GeoAI Lab · Uso educativo y consentimiento informado</p>
+                    </div>
+                </div>
+                <button onclick="appState.closeLegalNoticeModal()" class="text-slate-300 hover:text-white text-xl leading-none">×</button>
+            </div>
+
+            <div class="p-5 sm:p-6 max-h-[75vh] overflow-y-auto custom-scrollbar text-sm text-slate-700">
+                <div class="space-y-5">
+                    <section>
+                        <h4 class="text-sm font-bold text-slate-800 mb-2">Aviso Legal y Privacidad</h4>
+                        <div class="space-y-3">
+                            <p><strong>1. Finalidad del uso de la cámara:</strong> Esta aplicación solo utiliza la cámara para reconocer formas geométricas y entrenar un modelo IA localmente en el navegador. No se usa para identificación personal, seguimiento o control de acceso real.</p>
+                            <p><strong>2. Consentimiento informado:</strong> El acceso a la cámara requiere tu autorización explícita. Antes de activarse, se te solicita consentimiento con un aviso claro y se guarda una preferencia local (cookie y almacenamiento del navegador) para no volver a pedirlo innecesariamente.</p>
+                            <p><strong>3. Tratamiento de datos:</strong> Las imágenes o fotogramas capturados no se suben ni se almacenan en servidores externos por este proyecto. El procesamiento se realiza de forma local en tu dispositivo y solo se guarda la información mínima necesaria para el funcionamiento del modelo de aprendizaje del navegador.</p>
+                            <p><strong>4. Seguridad y privacidad:</strong> Se recomienda usar esta herramienta en sitios HTTPS, evitar compartir accesos a la cámara en dispositivos públicos y revisar siempre las configuraciones del navegador para controlar permisos. No se almacenan datos sensibles de identificación personal en este sitio.</p>
+                            <p><strong>5. Responsabilidad:</strong> Este proyecto es una herramienta educativa y de demostración. No sustituye a sistemas profesionales de seguridad, control de acceso, vigilancia ni tratamiento de datos regulado por normativas aplicables, especialmente en entornos empresariales o públicos.</p>
+                            <p><strong>6. Datos de contacto:</strong> Si tienes dudas sobre la privacidad, el uso de la cámara o la seguridad del sitio, contacta con el responsable del proyecto a través del correo institucional o del canal de comunicación indicado en la documentación del proyecto.</p>
+                        </div>
+                    </section>
+
+                    <section>
+                        <h4 class="text-sm font-bold text-slate-800 mb-2">Términos y Condiciones de Uso</h4>
+                        <div class="space-y-3">
+                            <p><strong>1. Objeto:</strong> GeoAI Lab es una herramienta educativa diseñada para enseñar geometría, reconocimiento visual y conceptos básicos de IA en un entorno web interactivo.</p>
+                            <p><strong>2. Uso permitido:</strong> El usuario puede acceder a la plataforma y utilizar sus funciones educativas siempre que lo haga con fines didácticos, personales o académicos y sin intentar vulnerar, manipular o explotar el sistema.</p>
+                            <p><strong>3. Responsabilidad del usuario:</strong> El usuario es responsable del uso correcto del sitio, de la cámara y de cualquier contenido que introduzca o genere durante la interacción con la aplicación.</p>
+                            <p><strong>4. Propiedad intelectual:</strong> El contenido, diseño, estructura, nombres, gráficos y recursos utilizados en la página pertenecen al autor o a los proveedores autorizados. Queda prohibida la reproducción o uso no autorizado sin consentimiento previo.</p>
+                            <p><strong>5. No sustituye servicios profesionales:</strong> La herramienta no debe entenderse como un sistema de seguridad, vigilancia, autenticación biométrica, control de acceso ni evaluación legal o profesional. Se ofrece solo con carácter demostrativo y didáctico.</p>
+                            <p><strong>6. Disponibilidad:</strong> La plataforma puede sufrir cambios, interrupciones o mejoras técnicas. No se garantiza disponibilidad continua ni ausencia total de errores.</p>
+                            <p><strong>7. Modificaciones:</strong> El propietario puede modificar el contenido, la funcionalidad o estos términos en cualquier momento, notificando los cambios de forma razonable dentro del sitio.</p>
+                            <p><strong>8. Aceptación:</strong> Al usar esta página, el usuario acepta estos términos y condiciones, así como el aviso legal y la política de privacidad aplicable a la herramienta.</p>
+                        </div>
+                    </section>
+                </div>
+
+                <div class="mt-5 p-3 rounded-2xl border border-amber-200 bg-amber-50 text-amber-900 text-xs leading-relaxed">
+                    <strong>Nota importante:</strong> Si borras las cookies o el almacenamiento local de tu navegador, se reiniciará la preferencia de consentimiento y deberás aceptar nuevamente el acceso a la cámara.
+                </div>
+            </div>
+
+            <div class="bg-slate-50 border-t border-slate-200 px-5 py-4 flex justify-end">
+                <button onclick="appState.closeLegalNoticeModal()" class="px-5 py-2.5 bg-brand-blue hover:bg-brand-blueDark text-white text-xs font-bold rounded-xl shadow transition">
+                    <i class="fa-solid fa-check mr-1"></i> Entendido
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-4 mt-8">
+        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <p>© 2026 GeoAI Lab - Herramienta Educativa de Geometría con TensorFlow.js & Three.js</p>
+            <div class="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+                <a href="#" onclick="appState.showLegalNoticeModal(); return false;" class="text-brand-blue hover:underline">Aviso Legal</a>
+                <a href="#" onclick="appState.showLegalNoticeModal(); return false;" class="text-brand-blue hover:underline">Términos y Condiciones</a>
+                <a href="#" onclick="appState.showPermissionInstructionsModal(); return false;" class="text-brand-blue hover:underline">Ayuda Cámara & Permisos</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        /**
+         * UTILIDADES DE COOKIES Y LOCALSTORAGE
+         */
+        const CookieManager = {
+            set: function(name, value, days) {
+                let expires = "";
+                if (days) {
+                    const date = new Date();
+                    date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                    expires = "; expires=" + date.toUTCString();
+                }
+                document.cookie = name + "=" + (value || "") + expires + "; path=/; SameSite=Lax";
+            },
+            get: function(name) {
+                const nameEQ = name + "=";
+                const ca = document.cookie.split(';');
+                for (let i = 0; i < ca.length; i++) {
+                    let c = ca[i];
+                    while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+                    if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+                }
+                return null;
+            },
+            erase: function(name) {
+                document.cookie = name + '=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+            }
+        };
+
+        /**
+         * BASE DE DATOS DE FIGURAS GEOMÉTRICAS 2D Y 3D
+         */
+        const GEOMETRY_DATA = [
+            { id: 'circulo', name: 'Círculo', type: '2D', faces: 1, vertices: 0, edges: 0, area: 'A = πr²', vol: 'N/A (Figura 2D)', trivia: 'Línea curva cerrada cuyos puntos equidistan del centro.', color: 0xFF80AB },
+            { id: 'cuadrado', name: 'Cuadrado', type: '2D', faces: 1, vertices: 4, edges: 4, area: 'A = a²', vol: 'N/A (Figura 2D)', trivia: 'Tiene 4 lados iguales y 4 ángulos rectos de 90°.', color: 0x29B6F6 },
+            { id: 'triangulo', name: 'Triángulo', type: '2D', faces: 1, vertices: 3, edges: 3, area: 'A = (b × h) / 2', vol: 'N/A (Figura 2D)', trivia: 'Polígono de 3 lados. La suma de sus ángulos internos siempre es 180°.', color: 0xFFB74D },
+            { id: 'pentagono', name: 'Pentágono', type: '2D', faces: 1, vertices: 5, edges: 5, area: 'A = (P × a) / 2', vol: 'N/A (Figura 2D)', trivia: 'Polígono de 5 lados y 5 vértices.', color: 0xBA68C8 },
+            { id: 'cubo', name: 'Cubo', type: '3D', faces: 6, vertices: 8, edges: 12, area: 'A = 6a²', vol: 'V = a³', trivia: 'Todas sus 6 caras son cuadrados perfectos iguales.', color: 0x4DD0E1 },
+            { id: 'esfera', name: 'Esfera', type: '3D', faces: 1, vertices: 0, edges: 0, area: 'A = 4πr²', vol: 'V = (4/3)πr³', trivia: 'Cuerpo redondo tridimensional perfecto en todas las direcciones.', color: 0xF06292 },
+            { id: 'cilindro', name: 'Cilindro', type: '3D', faces: 3, vertices: 0, edges: 2, area: 'A = 2πr(r + h)', vol: 'V = πr²h', trivia: 'Posee dos bases circulares paralelas y congruentes.', color: 0x81C784 },
+            { id: 'piramide', name: 'Pirámide', type: '3D', faces: 5, vertices: 5, edges: 8, area: 'A = A_base + A_lateral', vol: 'V = (1/3) A_base × h', trivia: 'Su base es un polígono y sus caras laterales son triángulos que se unen en la cúspide.', color: 0xFFD54F }
+        ];
+
+        /**
+         * PREGUNTAS MODO QUIZ
+         */
+        const QUIZ_QUESTIONS = [
+            {
+                q: '¿Cuál de las siguientes figuras 3D posee exactamente 6 caras cuadradas idénticas?',
+                options: ['Esfera', 'Cubo', 'Cilindro', 'Pirámide'],
+                correct: 1
+            },
+            {
+                q: '¿Cuánto suma siempre la totalidad de ángulos internos de cualquier Triángulo?',
+                options: ['90°', '180°', '360°', '270°'],
+                correct: 1
+            },
+            {
+                q: '¿Cuál es la fórmula para calcular el Área de un Círculo?',
+                options: ['A = a²', 'A = (b × h) / 2', 'A = πr²', 'A = 6a²'],
+                correct: 2
+            },
+            {
+                q: '¿Cuántas aristas tiene un Cubo?',
+                options: ['6', '8', '12', '16'],
+                correct: 2
+            },
+            {
+                q: '¿Qué cuerpo geométrico no posee vértices ni aristas rectas?',
+                options: ['Pirámide', 'Esfera', 'Cubo', 'Pentágono'],
+                correct: 1
+            }
+        ];
+
+        /**
+         * ESTADO GENERAL DE LA APLICACIÓN
+         */
+        const appState = {
+            // Estado Cámara y Permisos
+            cameraActive: false,
+            cameraFacing: 'user', // 'user' o 'environment'
+            mediaStream: null,
+            cookieConsentGranted: false,
+            
+            // Estado IA
+            mobilenetModel: null,
+            knnClassifier: null,
+            isPredicting: false,
+            samplesCount: {},
+            
+            // Estado Three.js
+            scene: null,
+            camera3d: null,
+            renderer: null,
+            currentMesh: null,
+            selectedShapeId: 'cubo',
+            
+            // Estado Quiz
+            currentQuizIdx: 0,
+            quizScore: 0,
+
+            // Inicialización de la aplicación
+            init: function() {
+                this.checkCookieConsent();
+                this.renderTrainGrid();
+                this.renderShapeSelectors();
+                this.initThreeJS();
+                this.initModels();
+                this.loadKnnFromLocalStorage();
+                this.initQuiz();
+
+                // Manejador de cambio de tamaño de ventana para Three.js
+                window.addEventListener('resize', () => {
+                    if (this.renderer && this.camera3d) {
+                        const container = document.getElementById('threeContainer');
+                        if (container) {
+                            this.camera3d.aspect = container.clientWidth / container.clientHeight;
+                            this.camera3d.updateProjectionMatrix();
+                            this.renderer.setSize(container.clientWidth, container.clientHeight);
+                        }
+                    }
+                });
+            },
+
+            // Gestión de Cookies & Consentimiento
+            checkCookieConsent: function() {
+                const consent = CookieManager.get('camera_consent') || localStorage.getItem('geoai_camera_consent');
+                const termsAccepted = localStorage.getItem('geoai_terms_accepted') === 'true';
+
+                if (consent === 'granted' && termsAccepted) {
+                    this.cookieConsentGranted = true;
+                    document.getElementById('cookiePermissionBanner').classList.add('hidden');
+                    document.getElementById('cookieTermsModal').classList.add('hidden');
+                    this.startCameraStream();
+                } else {
+                    document.getElementById('cookiePermissionBanner').classList.remove('hidden');
+                    document.getElementById('cookieTermsModal').classList.remove('hidden');
+                    const checkbox = document.getElementById('cookieTermsCheckbox');
+                    const acceptBtn = document.getElementById('acceptTermsBtn');
+                    if (checkbox && acceptBtn) {
+                        checkbox.checked = false;
+                        acceptBtn.disabled = true;
+                        checkbox.onchange = function() {
+                            acceptBtn.disabled = !checkbox.checked;
+                        };
+                    }
+                }
+            },
+
+            acceptTermsAndStart: function() {
+                const checkbox = document.getElementById('cookieTermsCheckbox');
+                if (!checkbox || !checkbox.checked) return;
+
+                localStorage.setItem('geoai_terms_accepted', 'true');
+                document.getElementById('cookieTermsModal').classList.add('hidden');
+                this.acceptConsentCookieAndStart();
+            },
+
+            acceptConsentCookieAndStart: function() {
+                CookieManager.set('camera_consent', 'granted', 30);
+                localStorage.setItem('geoai_camera_consent', 'granted');
+                this.cookieConsentGranted = true;
+                document.getElementById('cookiePermissionBanner').classList.add('hidden');
+                document.getElementById('cookieTermsModal').classList.add('hidden');
+                this.startCameraStream();
+            },
+
+            denyConsentCookie: function() {
+                CookieManager.set('camera_consent', 'denied', 7);
+                localStorage.setItem('geoai_camera_consent', 'denied');
+                localStorage.setItem('geoai_terms_accepted', 'false');
+                document.getElementById('cookiePermissionBanner').classList.add('hidden');
+                document.getElementById('cookieTermsModal').classList.add('hidden');
+            },
+
+            // Control de Cámara getUserMedia
+            startCameraStream: async function() {
+                const video = document.getElementById('webcam');
+                const overlayOff = document.getElementById('camOffOverlay');
+                const overlayErr = document.getElementById('camErrorOverlay');
+                const canvas = document.getElementById('webcamCanvas');
+                const badge = document.getElementById('cameraStatusBadge');
+                const statusTxt = document.getElementById('cameraStatusText');
+                const toggleBtnTxt = document.getElementById('toggleCamText');
+
+                try {
+                    overlayErr.classList.add('hidden');
+
+                    if (this.mediaStream) {
+                        this.mediaStream.getTracks().forEach(track => track.stop());
+                    }
+
+                    const constraints = {
+                        video: {
+                            facingMode: this.cameraFacing,
+                            width: { ideal: 640 },
+                            height: { ideal: 480 }
+                        },
+                        audio: false
+                    };
+
+                    this.mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    video.srcObject = this.mediaStream;
+
+                    await new Promise((resolve) => {
+                        video.onloadedmetadata = () => resolve();
+                    });
+
+                    video.play();
+                    video.classList.remove('hidden');
+                    canvas.classList.remove('hidden');
+                    overlayOff.classList.add('hidden');
+
+                    this.cameraActive = true;
+                    badge.className = "flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200";
+                    statusTxt.textContent = "Cámara Activa";
+                    toggleBtnTxt.textContent = "Apagar Cámara";
+
+                    // Iniciar ciclo de predicción si el modelo ya está listo
+                    if (this.mobilenetModel && this.knnClassifier) {
+                        this.startPredictionLoop();
+                    }
+
+                } catch (err) {
+                    console.error("Error al acceder a la cámara: ", err);
+                    this.cameraActive = false;
+                    badge.className = "flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800 border border-rose-200";
+                    statusTxt.textContent = "Error de Permiso";
+                    toggleBtnTxt.textContent = "Encender Cámara";
+                    overlayOff.classList.add('hidden');
+                    overlayErr.classList.remove('hidden');
+
+                    // Si falla por permiso denegado, mostramos modal interactivo con solución
+                    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                        this.showPermissionInstructionsModal();
+                    }
+                }
+            },
+
+            stopCameraStream: function() {
+                if (this.mediaStream) {
+                    this.mediaStream.getTracks().forEach(track => track.stop());
+                    this.mediaStream = null;
+                }
+                const video = document.getElementById('webcam');
+                const canvas = document.getElementById('webcamCanvas');
+                const overlayOff = document.getElementById('camOffOverlay');
+                const badge = document.getElementById('cameraStatusBadge');
+                const statusTxt = document.getElementById('cameraStatusText');
+                const toggleBtnTxt = document.getElementById('toggleCamText');
+                const predBadge = document.getElementById('predictionBadge');
+
+                video.classList.add('hidden');
+                canvas.classList.add('hidden');
+                overlayOff.classList.remove('hidden');
+                predBadge.classList.add('hidden');
+
+                this.cameraActive = false;
+                this.isPredicting = false;
+
+                badge.className = "flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200";
+                statusTxt.textContent = "Cámara Apagada";
+                toggleBtnTxt.textContent = "Encender Cámara";
+            },
+
+            toggleCamera: function() {
+                if (this.cameraActive) {
+                    this.stopCameraStream();
+                } else {
+                    if (!this.cookieConsentGranted) {
+                        this.acceptConsentCookieAndStart();
+                    } else {
+                        this.startCameraStream();
+                    }
+                }
+            },
+
+            switchCameraFacing: function() {
+                this.cameraFacing = (this.cameraFacing === 'user') ? 'environment' : 'user';
+                if (this.cameraActive) {
+                    this.startCameraStream();
+                }
+            },
+
+            requestCameraPermissionDirectly: function() {
+                this.acceptConsentCookieAndStart();
+            },
+
+            retryCameraAccess: function() {
+                this.closePermissionInstructionsModal();
+                this.startCameraStream();
+            },
+
+            // Modales de Permisos, Instrucciones y Aviso Legal
+            showPermissionInstructionsModal: function() {
+                document.getElementById('cameraInstructionsModal').classList.remove('hidden');
+            },
+
+            closePermissionInstructionsModal: function() {
+                document.getElementById('cameraInstructionsModal').classList.add('hidden');
+            },
+
+            showLegalNoticeModal: function() {
+                document.getElementById('legalNoticeModal').classList.remove('hidden');
+            },
+
+            closeLegalNoticeModal: function() {
+                document.getElementById('legalNoticeModal').classList.add('hidden');
+            },
+
+            showGuideTab: function(target) {
+                const tabs = ['chrome', 'firefox', 'safari', 'android'];
+                tabs.forEach(t => {
+                    const btn = document.getElementById('guideBtn' + t.charAt(0).toUpperCase() + t.slice(1));
+                    const content = document.getElementById('guideContent' + t.charAt(0).toUpperCase() + t.slice(1));
+                    if (t === target) {
+                        btn.className = "px-3 py-1.5 rounded-lg font-bold text-xs bg-brand-blueLight text-brand-blueDark";
+                        content.classList.remove('hidden');
+                    } else {
+                        btn.className = "px-3 py-1.5 rounded-lg font-bold text-xs text-slate-500 hover:bg-slate-100";
+                        content.classList.add('hidden');
+                    }
+                });
+            },
+
+            // TensorFlow.js & KNN
+            initModels: async function() {
+                const statusEl = document.getElementById('modelStatus');
+                try {
+                    statusEl.textContent = "Cargando Red Neuronal MobileNet...";
+                    this.mobilenetModel = await mobilenet.load();
+                    this.knnClassifier = knnClassifier.create();
+                    statusEl.textContent = "IA Lista para entrenar";
+                    statusEl.className = "font-bold text-emerald-600";
+
+                    if (this.cameraActive) {
+                        this.startPredictionLoop();
+                    }
+                } catch (e) {
+                    console.error("Error al inicializar TF.js", e);
+                    statusEl.textContent = "Error cargando modelo IA";
+                    statusEl.className = "font-bold text-rose-600";
+                }
+            },
+
+            addTrainSample: function(shapeId) {
+                if (!this.cameraActive) {
+                    alert("Por favor, enciende la cámara primero.");
+                    return;
+                }
+                if (!this.mobilenetModel || !this.knnClassifier) return;
+
+                const video = document.getElementById('webcam');
+                // Extraer activaciones intermedias de MobileNet
+                const logits = this.mobilenetModel.infer(video, 'conv_preds');
+                this.knnClassifier.addExample(logits, shapeId);
+
+                // Actualizar contadores
+                this.samplesCount[shapeId] = (this.samplesCount[shapeId] || 0) + 1;
+                this.updateSampleUI(shapeId);
+                this.updateTotalSamplesUI();
+
+                // Auto-guardar en LocalStorage
+                this.saveKnnModelToLocalStorage();
+            },
+
+            updateSampleUI: function(shapeId) {
+                const el = document.getElementById(`count_${shapeId}`);
+                if (el) {
+                    el.textContent = `${this.samplesCount[shapeId] || 0} fotos`;
+                }
+            },
+
+            updateTotalSamplesUI: function() {
+                const total = Object.values(this.samplesCount).reduce((a, b) => a + b, 0);
+                document.getElementById('totalSamplesCount').textContent = total;
+            },
+
+            startPredictionLoop: async function() {
+                if (this.isPredicting) return;
+                this.isPredicting = true;
+
+                const video = document.getElementById('webcam');
+                const predBadge = document.getElementById('predictionBadge');
+                const predLabel = document.getElementById('predictedLabel');
+                const predConf = document.getElementById('predictedConfidence');
+
+                while (this.cameraActive && this.knnClassifier) {
+                    if (this.knnClassifier.getNumClasses() > 0) {
+                        try {
+                            const logits = this.mobilenetModel.infer(video, 'conv_preds');
+                            const result = await this.knnClassifier.predictClass(logits, 10);
+
+                            if (result.label && result.confidences[result.label] > 0.4) {
+                                const shapeObj = GEOMETRY_DATA.find(s => s.id === result.label);
+                                const confPercent = Math.round(result.confidences[result.label] * 100);
+                                
+                                predBadge.classList.remove('hidden');
+                                predLabel.textContent = shapeObj ? shapeObj.name : result.label;
+                                predConf.textContent = `${confPercent}%`;
+
+                                // Si la confianza es alta, actualizar modelo 3D automáticamente
+                                if (confPercent > 70 && this.selectedShapeId !== result.label) {
+                                    this.selectShape3D(result.label);
+                                }
+                            } else {
+                                predBadge.classList.add('hidden');
+                            }
+                        } catch (err) {
+                            console.error("Error en loop predicción: ", err);
+                        }
+                    } else {
+                        predBadge.classList.add('hidden');
+                    }
+                    await tf.nextFrame();
+                }
+                this.isPredicting = false;
+            },
+
+            saveKnnModelToLocalStorage: function() {
+                if (!this.knnClassifier) return;
+                try {
+                    const dataset = this.knnClassifier.getClassifierDataset();
+                    const datasetObj = {};
+                    Object.keys(dataset).forEach((key) => {
+                        const data = dataset[key].dataSync();
+                        datasetObj[key] = {
+                            data: Array.from(data),
+                            shape: dataset[key].shape
+                        };
+                    });
+                    localStorage.setItem('geoai_knn_dataset', JSON.stringify(datasetObj));
+                    localStorage.setItem('geoai_knn_counts', JSON.stringify(this.samplesCount));
+                } catch (e) {
+                    console.error("Error guardando modelo", e);
+                }
+            },
+
+            saveKnnModel: function() {
+                this.saveKnnModelToLocalStorage();
+                alert("¡Modelo guardado correctamente en tu navegador!");
+            },
+
+            loadKnnFromLocalStorage: function() {
+                try {
+                    const datasetStr = localStorage.getItem('geoai_knn_dataset');
+                    const countsStr = localStorage.getItem('geoai_knn_counts');
+                    if (datasetStr && this.knnClassifier) {
+                        const datasetObj = JSON.parse(datasetStr);
+                        const tensorDataset = {};
+                        Object.keys(datasetObj).forEach((key) => {
+                            tensorDataset[key] = tf.tensor(datasetObj[key].data, datasetObj[key].shape);
+                        });
+                        this.knnClassifier.setClassifierDataset(tensorDataset);
+                        if (countsStr) {
+                            this.samplesCount = JSON.parse(countsStr);
+                            Object.keys(this.samplesCount).forEach(id => this.updateSampleUI(id));
+                            this.updateTotalSamplesUI();
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error al cargar KNN de localStorage", e);
+                }
+            },
+
+            clearKnnModel: function() {
+                if (confirm("¿Seguro que deseas reiniciar todas las muestras entrenadas?")) {
+                    if (this.knnClassifier) {
+                        this.knnClassifier.clearAllClasses();
+                    }
+                    this.samplesCount = {};
+                    localStorage.removeItem('geoai_knn_dataset');
+                    localStorage.removeItem('geoai_knn_counts');
+                    GEOMETRY_DATA.forEach(s => this.updateSampleUI(s.id));
+                    this.updateTotalSamplesUI();
+                    document.getElementById('predictionBadge').classList.add('hidden');
+                }
+            },
+
+            // Renderizado Dinámico de Vistas UI
+            renderTrainGrid: function() {
+                const grid = document.getElementById('shapeTrainGrid');
+                grid.innerHTML = GEOMETRY_DATA.map(shape => `
+                    <div class="bg-slate-50 border border-slate-200 hover:border-brand-blue rounded-2xl p-3 flex flex-col justify-between transition group">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="font-bold text-xs text-slate-800">${shape.name}</span>
+                            <span class="text-[10px] font-semibold px-2 py-0.5 rounded-md ${shape.type === '3D' ? 'bg-brand-blueLight text-brand-blueDark' : 'bg-brand-pinkLight text-brand-pink'}">${shape.type}</span>
+                        </div>
+                        <div class="flex items-center justify-between mt-1">
+                            <span id="count_${shape.id}" class="text-[11px] text-slate-400 font-medium">0 fotos</span>
+                            <button 
+                                onmousedown="appState.addTrainSample('${shape.id}')"
+                                ontouchstart="appState.addTrainSample('${shape.id}')"
+                                class="px-3 py-1.5 bg-brand-pink hover:bg-brand-pinkHover active:scale-95 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1">
+                                <i class="fa-solid fa-plus"></i> Capturar
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            },
+
+            renderShapeSelectors: function() {
+                const container = document.getElementById('shapeSelectorBtns');
+                container.innerHTML = GEOMETRY_DATA.map(shape => `
+                    <button id="selector_${shape.id}" onclick="appState.selectShape3D('${shape.id}')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition border ${shape.id === this.selectedShapeId ? 'bg-brand-blue text-white border-brand-blue shadow' : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'}">
+                        ${shape.name}
+                    </button>
+                `).join('');
+            },
+
+            // Interacción Three.js 3D Engine
+            initThreeJS: function() {
+                const container = document.getElementById('threeContainer');
+                if (!container) return;
+
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0x0f172a); // Fondo Slate-900
+
+                this.camera3d = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+                this.camera3d.position.set(0, 0, 5);
+
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer.setSize(container.clientWidth, container.clientHeight);
+                this.renderer.setPixelRatio(window.devicePixelRatio);
+                container.appendChild(this.renderer.domElement);
+
+                // Luces
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+                this.scene.add(ambientLight);
+
+                const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                dirLight.position.set(5, 10, 7);
+                this.scene.add(dirLight);
+
+                // Cargar figura inicial
+                this.update3DMesh(this.selectedShapeId);
+
+                // Control orbital simplificado con ratón/touch
+                let isDragging = false;
+                let previousMousePosition = { x: 0, y: 0 };
+
+                const domEl = this.renderer.domElement;
+                
+                const onPointerDown = (e) => {
+                    isDragging = true;
+                    previousMousePosition = {
+                        x: e.clientX || (e.touches && e.touches[0].clientX),
+                        y: e.clientY || (e.touches && e.touches[0].clientY)
+                    };
+                };
+
+                const onPointerMove = (e) => {
+                    if (!isDragging || !this.currentMesh) return;
+                    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+                    
+                    const deltaMove = {
+                        x: clientX - previousMousePosition.x,
+                        y: clientY - previousMousePosition.y
+                    };
+
+                    this.currentMesh.rotation.y += deltaMove.x * 0.01;
+                    this.currentMesh.rotation.x += deltaMove.y * 0.01;
+
+                    previousMousePosition = { x: clientX, y: clientY };
+                };
+
+                const onPointerUp = () => { isDragging = false; };
+
+                domEl.addEventListener('mousedown', onPointerDown);
+                domEl.addEventListener('mousemove', onPointerMove);
+                window.addEventListener('mouseup', onPointerUp);
+
+                domEl.addEventListener('touchstart', onPointerDown);
+                domEl.addEventListener('touchmove', onPointerMove);
+                window.addEventListener('touchend', onPointerUp);
+
+                // Loop de renderizado Three.js
+                const animate = () => {
+                    requestAnimationFrame(animate);
+                    if (this.currentMesh && !isDragging) {
+                        this.currentMesh.rotation.y += 0.005;
+                    }
+                    this.renderer.render(this.scene, this.camera3d);
+                };
+                animate();
+            },
+
+            selectShape3D: function(shapeId) {
+                this.selectedShapeId = shapeId;
+                this.renderShapeSelectors();
+                this.update3DMesh(shapeId);
+                this.updateShapeInfoUI(shapeId);
+            },
+
+            update3DMesh: function(shapeId) {
+                if (!this.scene) return;
+                if (this.currentMesh) {
+                    this.scene.remove(this.currentMesh);
+                }
+
+                const shapeObj = GEOMETRY_DATA.find(s => s.id === shapeId) || GEOMETRY_DATA[4];
+                let geometry;
+
+                switch (shapeId) {
+                    case 'circulo':
+                        geometry = new THREE.CircleGeometry(1.3, 32);
+                        break;
+                    case 'cuadrado':
+                        geometry = new THREE.PlaneGeometry(2, 2);
+                        break;
+                    case 'triangulo':
+                        geometry = new THREE.CircleGeometry(1.5, 3);
+                        break;
+                    case 'pentagono':
+                        geometry = new THREE.CircleGeometry(1.5, 5);
+                        break;
+                    case 'cubo':
+                        geometry = new THREE.BoxGeometry(1.8, 1.8, 1.8);
+                        break;
+                    case 'esfera':
+                        geometry = new THREE.SphereGeometry(1.3, 32, 32);
+                        break;
+                    case 'cilindro':
+                        geometry = new THREE.CylinderGeometry(1, 1, 2, 32);
+                        break;
+                    case 'piramide':
+                        geometry = new THREE.ConeGeometry(1.4, 2, 4);
+                        break;
+                    default:
+                        geometry = new THREE.BoxGeometry(1.8, 1.8, 1.8);
+                }
+
+                const material = new THREE.MeshStandardMaterial({
+                    color: shapeObj.color,
+                    roughness: 0.3,
+                    metalness: 0.2,
+                    side: THREE.DoubleSide
+                });
+
+                this.currentMesh = new THREE.Mesh(geometry, material);
+
+                // Añadir estructura alámbrica para visualizar aristas claramente
+                const wireframeGeom = new THREE.WireframeGeometry(geometry);
+                const wireframeMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 1.5 });
+                const wireframe = new THREE.LineSegments(wireframeGeom, wireframeMat);
+                this.currentMesh.add(wireframe);
+
+                this.scene.add(this.currentMesh);
+                document.getElementById('shapeTitle3D').textContent = `${shapeObj.name} (${shapeObj.type})`;
+            },
+
+            updateShapeInfoUI: function(shapeId) {
+                const shape = GEOMETRY_DATA.find(s => s.id === shapeId) || GEOMETRY_DATA[0];
+                document.getElementById('infoShapeName').textContent = shape.name;
+                document.getElementById('infoShapeDesc').textContent = shape.trivia;
+                document.getElementById('infoFaces').textContent = shape.faces;
+                document.getElementById('infoVertices').textContent = shape.vertices;
+                document.getElementById('infoEdges').textContent = shape.edges;
+                document.getElementById('formulaArea').textContent = shape.area;
+                document.getElementById('formulaVolume').textContent = shape.vol;
+                document.getElementById('infoTrivia').textContent = shape.trivia;
+                document.getElementById('shapeCategoryBadge').textContent = `Geometría ${shape.type}`;
+            },
+
+            // Navegación por Pestañas
+            switchTab: function(tabName) {
+                const sTrain = document.getElementById('sectionTrain');
+                const sGeom = document.getElementById('sectionGeometry');
+                const sQuiz = document.getElementById('sectionQuiz');
+
+                const btnTrain = document.getElementById('tabTrainBtn');
+                const btnGeom = document.getElementById('tab3dBtn');
+                const btnQuiz = document.getElementById('tabQuizBtn');
+
+                const activeClass = "bg-brand-blueLight text-brand-blueDark";
+                const inactiveClass = "text-slate-500 hover:text-brand-blueDark";
+
+                sTrain.classList.add('hidden');
+                sGeom.classList.add('hidden');
+                sQuiz.classList.add('hidden');
+
+                btnTrain.className = `flex-1 sm:flex-initial px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 ${inactiveClass}`;
+                btnGeom.className = `flex-1 sm:flex-initial px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 ${inactiveClass}`;
+                btnQuiz.className = `flex-1 sm:flex-initial px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 ${inactiveClass}`;
+
+                if (tabName === 'train') {
+                    sTrain.classList.remove('hidden');
+                    btnTrain.className = `flex-1 sm:flex-initial px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 ${activeClass}`;
+                } else if (tabName === 'geometry') {
+                    sGeom.classList.remove('hidden');
+                    btnGeom.className = `flex-1 sm:flex-initial px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 ${activeClass}`;
+                    // Forzar reajuste de Three.js canvas al cambiar de pestaña
+                    setTimeout(() => {
+                        if (this.renderer && this.camera3d) {
+                            const container = document.getElementById('threeContainer');
+                            this.camera3d.aspect = container.clientWidth / container.clientHeight;
+                            this.camera3d.updateProjectionMatrix();
+                            this.renderer.setSize(container.clientWidth, container.clientHeight);
+                        }
+                    }, 50);
+                } else if (tabName === 'quiz') {
+                    sQuiz.classList.remove('hidden');
+                    btnQuiz.className = `flex-1 sm:flex-initial px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-brand-pinkLight text-brand-pink`;
+                }
+            },
+
+            // Modo Quiz
+            initQuiz: function() {
+                this.currentQuizIdx = 0;
+                this.quizScore = 0;
+                this.renderQuizQuestion();
+            },
+
+            renderQuizQuestion: function() {
+                const qData = QUIZ_QUESTIONS[this.currentQuizIdx];
+                document.getElementById('quizQuestionNum').textContent = `Pregunta ${this.currentQuizIdx + 1} de ${QUIZ_QUESTIONS.length}`;
+                document.getElementById('quizScoreBadge').textContent = `Puntos: ${this.quizScore}`;
+                document.getElementById('quizQuestionText').textContent = qData.q;
+                
+                const feedback = document.getElementById('quizFeedback');
+                feedback.classList.add('hidden');
+                document.getElementById('nextQuizBtn').classList.add('hidden');
+
+                const optsContainer = document.getElementById('quizOptions');
+                optsContainer.innerHTML = qData.options.map((opt, idx) => `
+                    <button onclick="appState.checkAnswer(${idx})" class="w-full text-left p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 hover:border-brand-blue font-semibold text-xs sm:text-sm transition">
+                        ${opt}
+                    </button>
+                `).join('');
+            },
+
+            checkAnswer: function(selectedIdx) {
+                const qData = QUIZ_QUESTIONS[this.currentQuizIdx];
+                const feedback = document.getElementById('quizFeedback');
+                const optsContainer = document.getElementById('quizOptions');
+                
+                // Deshabilitar botones
+                const buttons = optsContainer.querySelectorAll('button');
+                buttons.forEach((btn, idx) => {
+                    btn.disabled = true;
+                    if (idx === qData.correct) {
+                        btn.className = "w-full text-left p-3.5 rounded-xl border border-emerald-500 bg-emerald-50 text-emerald-800 font-bold text-xs sm:text-sm";
+                    } else if (idx === selectedIdx) {
+                        btn.className = "w-full text-left p-3.5 rounded-xl border border-rose-500 bg-rose-50 text-rose-800 font-bold text-xs sm:text-sm";
+                    }
+                });
+
+                if (selectedIdx === qData.correct) {
+                    this.quizScore += 10;
+                    feedback.className = "mt-4 p-3 rounded-xl text-xs font-bold text-center bg-emerald-100 text-emerald-800 border border-emerald-200";
+                    feedback.textContent = "¡Correcto! Excelente deducción geométrica. +10 puntos";
+                } else {
+                    feedback.className = "mt-4 p-3 rounded-xl text-xs font-bold text-center bg-rose-100 text-rose-800 border border-rose-200";
+                    feedback.textContent = `Incorrecto. La respuesta correcta era: "${qData.options[qData.correct]}"`;
+                }
+                
+                feedback.classList.remove('hidden');
+                document.getElementById('quizScoreBadge').textContent = `Puntos: ${this.quizScore}`;
+                document.getElementById('nextQuizBtn').classList.remove('hidden');
+            },
+
+            nextQuizQuestion: function() {
+                this.currentQuizIdx++;
+                if (this.currentQuizIdx < QUIZ_QUESTIONS.length) {
+                    this.renderQuizQuestion();
+                } else {
+                    // Fin del Quiz
+                    document.getElementById('quizQuestionNum').textContent = "¡Quiz Completado!";
+                    document.getElementById('quizQuestionText').textContent = `🎉 ¡Felicidades! Has terminado el desafío con una puntuación final de ${this.quizScore} puntos.`;
+                    document.getElementById('quizOptions').innerHTML = '';
+                    document.getElementById('quizFeedback').classList.add('hidden');
+                    document.getElementById('nextQuizBtn').classList.add('hidden');
+                }
+            },
+
+            resetQuiz: function() {
+                this.initQuiz();
+            }
+        };
+
+        window.addEventListener('DOMContentLoaded', () => {
+            appState.init();
+        });
+    </script>
+</body>
+</html>
